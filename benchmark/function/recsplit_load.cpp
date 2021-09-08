@@ -38,6 +38,48 @@ template <typename T> void benchmark(RecSplit<LEAF, ALLOC_TYPE> &rs, const vecto
 	printf("\nMedian: %.3fs; %.3f ns/key\n", sample[SAMPLES / 2] * 1E-9, sample[SAMPLES / 2] / (double)keys.size());
 }
 
+	using Bytes = std::string;
+
+static std::optional<unsigned> decode_hex_digit(char ch) noexcept {
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    } else if (ch >= 'a' && ch <= 'f') {
+        return ch - 'a' + 10;
+    } else if (ch >= 'A' && ch <= 'F') {
+        return ch - 'A' + 10;
+    }
+    return std::nullopt;
+}
+
+
+std::optional<Bytes> from_hex(std::string_view hex) noexcept {
+    if (hex.length() >= 2 && hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X')) {
+        hex.remove_prefix(2);
+    }
+
+    if (hex.length() % 2 != 0) {
+        return std::nullopt;
+    }
+
+    Bytes out{};
+    out.reserve(hex.length() / 2);
+
+    unsigned carry{0};
+    for (size_t i{0}; i < hex.size(); ++i) {
+        std::optional<unsigned> v{decode_hex_digit(hex[i])};
+        if (!v) {
+            return std::nullopt;
+        }
+        if (i % 2 == 0) {
+            carry = *v << 4;
+        } else {
+            out.push_back(static_cast<char>(carry | *v));
+        }
+    }
+
+    return out;
+}
+
 int main(int argc, char **argv) {
 	if (argc < 3) {
 		fprintf(stderr, "Usage: %s <keys> <mphf>\n", argv[0]);
@@ -47,7 +89,11 @@ int main(int argc, char **argv) {
 	ifstream fin(argv[1]);
 	string str;
 	vector<string> keys;
-	while (getline(fin, str)) keys.push_back(str);
+	while (getline(fin, str)) {
+		Bytes key;
+		key = from_hex(str).value();
+		keys.push_back(key);
+	}
 	fin.close();
 
 	fstream fs;
