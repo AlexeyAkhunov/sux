@@ -39,6 +39,7 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <optional>
 
 namespace sux::function {
 
@@ -354,6 +355,48 @@ template <size_t LEAF_SIZE, util::AllocType AT = util::AllocType::MALLOC> class 
 		hash_gen(&keys[0]);
 	}
 
+	using Bytes = std::basic_string<uint8_t>;
+
+static std::optional<unsigned> decode_hex_digit(char ch) noexcept {
+    if (ch >= '0' && ch <= '9') {
+        return ch - '0';
+    } else if (ch >= 'a' && ch <= 'f') {
+        return ch - 'a' + 10;
+    } else if (ch >= 'A' && ch <= 'F') {
+        return ch - 'A' + 10;
+    }
+    return std::nullopt;
+}
+
+
+std::optional<Bytes> from_hex(std::string_view hex) noexcept {
+    if (hex.length() >= 2 && hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X')) {
+        hex.remove_prefix(2);
+    }
+
+    if (hex.length() % 2 != 0) {
+        return std::nullopt;
+    }
+
+    Bytes out{};
+    out.reserve(hex.length() / 2);
+
+    unsigned carry{0};
+    for (size_t i{0}; i < hex.size(); ++i) {
+        std::optional<unsigned> v{decode_hex_digit(hex[i])};
+        if (!v) {
+            return std::nullopt;
+        }
+        if (i % 2 == 0) {
+            carry = *v << 4;
+        } else {
+            out.push_back(static_cast<uint8_t>(carry | *v));
+        }
+    }
+
+    return out;
+}
+
 	/** Builds a RecSplit instance using a list of keys returned by a stream and bucket size.
 	 *
 	 * **Warning**: duplicate keys will cause this method to never return.
@@ -364,7 +407,11 @@ template <size_t LEAF_SIZE, util::AllocType AT = util::AllocType::MALLOC> class 
 	RecSplit(ifstream& input, const size_t bucket_size) {
 		this->bucket_size = bucket_size;
 		vector<hash128_t> h;
-		for(string key; getline(input, key);) h.push_back(first_hash(key.c_str(), key.size()));
+		for(string hexkey; getline(input, hexkey);) {
+			Bytes key;
+			key = from_hex(hexkey).value();
+			h.push_back(first_hash(key.c_str(), key.size()));
+		}
 		this->keys_count = h.size();
 		hash_gen(&h[0]);
 	}
